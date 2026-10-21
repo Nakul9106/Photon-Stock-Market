@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Photon — Real-time WebSocket Stock Ticker dashboard featuring simulated market prices, live WebSocket streaming, and interactive subscription controls.">
+    <title>Photon — Real-time WebSocket Stock Ticker</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/css/styles.css">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220%22%20width=%2232%22%20height=%2232%22><circle cx=%2216%22 cy=%2216%22 r=%2214%22 fill=%22%232563eb%22/><path d=%22M9 16l4-4 4 4 6-6%22 stroke=%22white%22 stroke-width=%222.5%22 fill=%22none%22 stroke-linecap=%22round%22 stroke-linejoin=%22round%22/></svg>">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Top Navigation & Header -->
+        <header class="app-header" role="banner">
+            <div class="brand-section">
+                <div class="logo-mark" aria-hidden="true">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="22 7 13.5 15.5 8.5 10.5 2 17"></polyline>
+                        <polyline points="16 7 22 7 22 13"></polyline>
+                    </svg>
+                </div>
+                <div class="title-group">
+                    <div class="brand-title-row">
+                        <h1 class="brand-name">Photon</h1>
+                        <span class="badge simulated-badge" title="All stock figures are simulated for demonstration purposes only." role="note">
+                            <span class="dot-indicator pulse" aria-hidden="true"></span>
+                            SIMULATED DATA
+                        </span>
+                    </div>
+                    <p class="brand-subtitle">Real-time WebSocket Stock Ticker</p>
+                </div>
+            </div>
+
+            <!-- Header Metrics & Health -->
+            <div class="header-metrics" role="region" aria-label="System Metrics">
+                <div class="metric-card">
+                    <span class="metric-label">Connection</span>
+                    <div class="status-indicator-wrapper">
+                        <span id="connectionDot" class="status-dot connecting" aria-hidden="true"></span>
+                        <span id="connectionStatus" class="status-text" aria-live="polite">Connecting...</span>
+                    </div>
+                </div>
+
+                <div class="metric-card">
+                    <span class="metric-label">Last Tick</span>
+                    <span id="lastUpdated" class="metric-value font-mono">--:--:--</span>
+                </div>
+
+                <div class="metric-card">
+                    <span class="metric-label">Tracked Stocks</span>
+                    <span id="trackedCount" class="metric-value font-mono">{{ initial_stocks|length }}</span>
+                </div>
+
+                <div class="metric-card">
+                    <span class="metric-label">Active Subscriptions</span>
+                    <span id="subCount" class="metric-value font-mono">{{ initial_stocks|length }}</span>
+                </div>
+            </div>
+        </header>
+
+        <!-- Reconnection Alert Banner -->
+        <div id="reconnectBanner" class="alert-banner hidden" role="alert" aria-live="assertive">
+            <div class="banner-content">
+                <svg class="banner-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
+                    <line x1="12" y1="9" x2="12" y2="13"></line>
+                    <line x1="12" y1="17" x2="12.01" y2="17"></line>
+                </svg>
+                <span id="reconnectBannerText">Connection lost. Reconnecting in 3s...</span>
+            </div>
+            <button id="manualReconnectBtn" class="btn btn-sm btn-outline">Reconnect Now</button>
+        </div>
+
+        <!-- Controls Toolbar -->
+        <section class="controls-section" aria-label="Ticker Controls and Filtering">
+            <div class="search-box">
+                <svg class="search-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                    <circle cx="11" cy="11" r="8"></circle>
+                    <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                </svg>
+                <input 
+                    type="search" 
+                    id="stockSearchInput" 
+                    placeholder="Search by symbol or company (e.g. AAPL, Tesla)..." 
+                    aria-label="Filter stocks by symbol or company name"
+                    autocomplete="off"
+                    spellcheck="false"
+                >
+                <button id="clearSearchBtn" class="clear-btn hidden" aria-label="Clear search query">&times;</button>
+            </div>
+
+            <!-- Subscription Multi-Select Controls -->
+            <div class="subscription-controls">
+                <div class="control-actions">
+                    <span class="control-label">Subscriptions:</span>
+                    <button id="selectAllBtn" class="btn btn-sm btn-secondary" title="Subscribe to all available stocks">Select All</button>
+                    <button id="deselectAllBtn" class="btn btn-sm btn-secondary" title="Deselect all stocks">Deselect All</button>
+                </div>
+
+                <div class="symbol-chips" id="symbolChipsContainer" role="group" aria-label="Individual stock subscriptions">
+                    {% for stock in initial_stocks %}
+                    <button 
+                        type="button" 
+                        class="chip active" 
+                        data-symbol="{{ stock.symbol }}" 
+                        aria-pressed="true"
+                        title="Click to toggle {{ stock.symbol }} live stream"
+                    >
+                        <span class="chip-dot"></span>
+                        {{ stock.symbol }}
+                    </button>
+                    {% endfor %}
+                </div>
+            </div>
+        </section>
+
+        <!-- Main Ticker Display -->
+        <main class="dashboard-main" role="main">
+            <div class="section-header">
+                <div class="section-title-wrap">
+                    <h2 class="section-title">Live Market Stream</h2>
+                    <span class="update-frequency-tag">Update rate: ~1.0s</span>
+                </div>
+                <div class="view-controls">
+                    <span id="filteredResultsLabel" class="results-hint" aria-live="polite">Showing all 6 stocks</span>
+                </div>
+            </div>
+
+            <!-- Stocks Grid -->
+            <div class="stocks-grid" id="stocksGrid" role="region" aria-label="Stock prices" aria-live="polite">
+                {% for stock in initial_stocks %}
+                <article 
+                    class="stock-card" 
+                    id="card-{{ stock.symbol }}" 
+                    data-symbol="{{ stock.symbol }}"
+                    data-company="{{ stock.company }}"
+                    role="button"
+                    tabindex="0"
+                    aria-label="View live chart and full details for {{ stock.symbol }}"
+                    title="Click to view interactive chart and full market details"
+                >
+                    <div class="card-header">
+                        <div class="symbol-info">
+                            <span class="stock-symbol font-mono">{{ stock.symbol }}</span>
+                            <span class="company-name" title="{{ stock.company }}">{{ stock.company }}</span>
+                        </div>
+                        <span class="sub-status-pill subscribed" id="subPill-{{ stock.symbol }}" title="Subscription status">
+                            LIVE
+                        </span>
+                    </div>
+
+                    <div class="card-body">
+                        <div class="price-container">
+                            <span class="currency-symbol">$</span>
+                            <span class="current-price font-mono" id="price-{{ stock.symbol }}">{{ "%.2f"|format(stock.price) }}</span>
+                        </div>
+
+                        <div class="movement-container" id="movement-{{ stock.symbol }}">
+                            <span class="direction-indicator neutral" id="arrow-{{ stock.symbol }}" aria-hidden="true">&bull;</span>
+                            <span class="price-change font-mono" id="change-{{ stock.symbol }}">
+                                {{ "%+.2f"|format(stock.change) }}
+                            </span>
+                            <span class="percent-change font-mono" id="percent-{{ stock.symbol }}">
+                                ({{ "%+.2f"|format(stock.change_percent) }}%)
+                            </span>
+                        </div>
+                    </div>
+
+                    <div class="card-footer">
+                        <span class="prev-price-label">Prev: $<span id="prev-{{ stock.symbol }}">{{ "%.2f"|format(stock.previous_price) }}</span></span>
+                        <span class="card-action-hint">Chart &amp; Details &rarr;</span>
+                    </div>
+                </article>
+                {% endfor %}
+            </div>
+
+            <!-- Empty State when filter yields 0 matches -->
+            <div id="emptyState" class="empty-state hidden" role="status">
+                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="empty-icon">
+                    <circle cx="11" cy="11" r="8"></circle>
+                    <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                    <line x1="8" y1="11" x2="14" y2="11"></line>
+                </svg>
+                <h3 class="empty-title">No matching stocks found</h3>
+                <p class="empty-desc">No stocks match your query "<span id="emptyQueryText"></span>". Try another ticker or company name.</p>
+                <button id="resetSearchBtn" class="btn btn-secondary">Clear Filter</button>
+            </div>
+        </main>
+
+        <!-- Comprehensive Stock Detail & Interactive Chart Modal -->
+        <dialog id="stockModal" class="stock-modal" aria-labelledby="modalStockSymbol" aria-modal="true">
+            <div class="modal-dialog-content">
+                <!-- Modal Top Header -->
+                <div class="modal-top-bar">
+                    <div class="modal-header-left">
+                        <div class="modal-title-wrap">
+                            <span id="modalStockSymbol" class="modal-symbol font-mono">AAPL</span>
+                            <span id="modalCompanyName" class="modal-company">Apple Inc.</span>
+                        </div>
+                        <div class="modal-meta-pills">
+                            <span id="modalSectorPill" class="modal-pill">Technology</span>
+                            <span class="modal-pill live-pill"><span class="dot-indicator pulse" aria-hidden="true"></span> REAL-TIME TICKS</span>
+                        </div>
+                    </div>
+                    <button id="closeModalBtn" class="modal-close-btn" aria-label="Close details dialog">&times;</button>
+                </div>
+
+                <!-- Price and User Chart Options Ribbon -->
+                <div class="modal-price-bar">
+                    <div class="modal-price-left">
+                        <span class="modal-price-currency">$</span>
+                        <span id="modalCurrentPrice" class="modal-price font-mono">182.50</span>
+                        <div id="modalMovement" class="modal-movement gain">
+                            <span id="modalArrow" class="modal-arrow">&#9650;</span>
+                            <span id="modalChange" class="font-mono">+1.25</span>
+                            <span id="modalChangePercent" class="font-mono">(+0.69%)</span>
+                        </div>
+                    </div>
+
+                    <!-- User Choice & Interactive Chart Toolbar -->
+                    <div class="chart-options-bar">
+                        <div class="chart-toolbar-group">
+                            <span class="options-label">Type:</span>
+                            <div class="chart-mode-toggle" role="radiogroup" aria-label="Chart display options">
+                                <button id="chartModeCandles" class="btn-chart-mode active" role="radio" aria-checked="true" title="Switch to Japanese Candlestick view">
+                                    <span class="btn-icon">🕯️</span> Candles
+                                </button>
+                                <button id="chartModeGraph" class="btn-chart-mode" role="radio" aria-checked="false" title="Switch to continuous Area / Line Graph view">
+                                    <span class="btn-icon">📈</span> Line
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Timeframe Resolution Pills -->
+                        <div class="chart-toolbar-group">
+                            <span class="options-label">Interval:</span>
+                            <div class="timeframe-selector" role="group" aria-label="Chart time interval">
+                                <button class="tf-btn active" data-tf="1m" title="1-minute interval">1m</button>
+                                <button class="tf-btn" data-tf="5m" title="5-minute interval">5m</button>
+                                <button class="tf-btn" data-tf="15m" title="15-minute interval">15m</button>
+                                <button class="tf-btn" data-tf="1D" title="1-day interval">1D</button>
+                            </div>
+                        </div>
+
+                        <!-- Zoom & Sizing Flexibility Controls -->
+                        <div class="chart-toolbar-group">
+                            <span class="options-label">Adjust:</span>
+                            <div class="chart-zoom-controls">
+                                <button id="zoomInBtn" class="chart-tool-btn" title="Zoom In (Enlarge candles)" aria-label="Zoom in">&#10010;</button>
+                                <button id="zoomOutBtn" class="chart-tool-btn" title="Zoom Out (View more candles)" aria-label="Zoom out">&#8722;</button>
+                                <button id="resetZoomBtn" class="chart-tool-btn" title="Reset View &amp; Scale" aria-label="Reset zoom">&#8635; Reset</button>
+                                <button id="toggleChartSizeBtn" class="chart-tool-btn" title="Toggle Height (Standard / Expanded)" aria-label="Toggle chart size">&#8597; Size</button>
+                                <button id="fullscreenChartBtn" class="chart-tool-btn" title="Toggle Fullscreen" aria-label="Fullscreen chart">&#x26F6;</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Expanded Chart Viewport with Canvas & Dynamic HUD -->
+                <div class="chart-viewport" id="chartViewport">
+                    <div id="chartHud" class="chart-hud font-mono">
+                        <span class="hud-item">O: <strong id="hudOpen">--</strong></span>
+                        <span class="hud-item">H: <strong id="hudHigh">--</strong></span>
+                        <span class="hud-item">L: <strong id="hudLow">--</strong></span>
+                        <span class="hud-item">C: <strong id="hudClose">--</strong></span>
+                        <span class="hud-item">Vol: <strong id="hudVol">--</strong></span>
+                        <span id="hudBadge" class="hud-badge neutral">LIVE</span>
+                    </div>
+                    <canvas id="stockCanvas" class="stock-chart-canvas"></canvas>
+                    <div id="chartCrosshairTooltip" class="chart-tooltip hidden"></div>
+                </div>
+
+                <!-- Pro Tips / Chart Navigation Helper -->
+                <div class="chart-footer-hint">
+                    <span>💡 <strong>Flexible Navigation:</strong> Scroll mouse wheel to zoom in/out &bull; Click &amp; drag chart horizontally to pan &bull; Hover anywhere for live precision crosshair &amp; OHLC metrics</span>
+                </div>
+
+                <!-- Market Fundamentals & Key Statistics -->
+                <div class="fundamentals-section">
+                    <h3 class="section-subheading">Market Fundamentals &amp; Key Statistics</h3>
+                    <div class="metrics-grid">
+                        <div class="detail-metric">
+                            <span class="metric-key">Day Range</span>
+                            <span class="metric-val font-mono">$<span id="modalDayLow">--</span> - $<span id="modalDayHigh">--</span></span>
+                        </div>
+                        <div class="detail-metric">
+                            <span class="metric-key">Day Open</span>
+                            <span class="metric-val font-mono">$<span id="modalDayOpen">--</span></span>
+                        </div>
+                        <div class="detail-metric">
+                            <span class="metric-key">Trading Volume</span>
+                            <span id="modalVolume" class="metric-val font-mono">--</span>
+                        </div>
+                        <div class="detail-metric">
+                            <span class="metric-key">Market Capitalization</span>
+                            <span id="modalMarketCap" class="metric-val font-mono">--</span>
+                        </div>
+                        <div class="detail-metric">
+                            <span class="metric-key">P/E Ratio (TTM)</span>
+                            <span id="modalPeRatio" class="metric-val font-mono">--</span>
+                        </div>
+                        <div class="detail-metric">
+                            <span class="metric-key">52-Week Range</span>
+                            <span class="metric-val font-mono">$<span id="modal52Low">--</span> - $<span id="modal52High">--</span></span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Company Overview & Background -->
+                <div class="company-desc-box">
+                    <h4 class="desc-heading">About <span id="modalAboutName">Company</span></h4>
+                    <p id="modalCompanyDesc" class="desc-text">Company description and business operations...</p>
+                </div>
+            </div>
+        </dialog>
+
+        <!-- Informational Footer -->
+        <footer class="app-footer" role="contentinfo">
+            <div class="footer-left">
+                <span class="footer-brand">Photon Stock Ticker</span>
+                <span class="footer-divider">&bull;</span>
+                <span class="footer-tech">FastAPI &bull; Python WebSockets &bull; Vanilla JS</span>
+            </div>
+            <div class="footer-right">
+                <span class="disclaimer-text">
+                    ⚠️ <strong>Notice:</strong> All data is generated by an asynchronous simulation algorithm for testing &amp; evaluation. No actual market orders or real currency are represented.
+                </span>
+            </div>
+        </footer>
+    </div>
+
+    <!-- Client-side Application Script -->
+    <script src="/static/js/app.js"></script>
+</body>
+</html>
